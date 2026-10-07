@@ -1,0 +1,57 @@
+// use prisma-8
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  username  String?
+  name      String?
+  is_active Boolean  @default(false)
+
+  posts     Post[]
+  comments  Comment[]
+
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+}
+
+model Post {
+  id          Int          @id @default(autoincrement())
+  title       String
+  content     String?
+
+  authorId    Int
+  author      User         @relation(fields: [authorId], references: [id])
+
+  attachments Attachment[]
+  comments    Comment[]
+
+  createdAt   TimestamptzString @default(now())
+  updatedAt   temporal.updatedAtString()
+}
+
+model Attachment {
+  id        Int    @id @default(autoincrement())
+  title     String
+  url       String
+
+  postId    Int
+  post      Post   @relation(fields: [postId], references: [id])
+}
+
+model Comment {
+  id         Int      @id @default(autoincrement())
+  content    String
+  deleted    Boolean  @default(false)
+
+  authorId   Int
+  author     User     @relation(fields: [authorId], references: [id])
+
+  postId     Int
+  post       Post     @relation(fields: [postId], references: [id])
+
+  parentId   Int?
+  parent     Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies    Comment[] @relation("CommentReplies")
+
+  created_at TimestamptzString @default(now())
+}
