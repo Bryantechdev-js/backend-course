@@ -3,3 +3,10 @@ dist/
 .env
 .env.*
 !.env.example
+.sf
+.qodo
+.devin
+.cursor
+.claude
+.agents
+.node_modules
