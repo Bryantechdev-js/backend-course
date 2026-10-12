@@ -17,6 +17,7 @@ model Post {
 
   authorId    Int
   author      User         @relation(fields: [authorId], references: [id])
+  comments    Comment[]
   createdAt   TimestamptzString @default(now())
   updatedAt   temporal.updatedAtString()
 }

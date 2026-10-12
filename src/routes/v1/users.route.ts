@@ -2,6 +2,8 @@ import { Router } from "express";
 import argon2 from "argon2";
 const router = Router();
 import { db } from "../../prisma/db.ts";
+import { userSchema } from "../../lib/zodconfig.ts";
+import { rateLimit } from "express-rate-limit";
 
 /**
  * GET /api/v1/users
@@ -10,7 +12,7 @@ import { db } from "../../prisma/db.ts";
 
 router.get("/", async (req, res) => {
   try {
-    const users = await db.orm.public.User
+   const users = await db.orm.public.User
       .orderBy((user) => user.id.asc())
       .all();
 
@@ -92,57 +94,53 @@ router.get("/:id", async (req, res) => {
  * POST /api/v1/users
  * Create a user
  */
-router.post("/", async (req, res) => {
+export const registerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many registration attempts. Please try again later.",
+  },
+});
+router.post("/",registerLimiter, async (req, res) => {
   try {
     const { email, username, password } = req.body ?? {};
-
-    // Validate email
-    if (typeof email !== "string" || !email.trim()) {
-      res.status(400).json({
+    const result = userSchema.safeParse({ username, email, password });
+    if (!result.success) {
+      return res.status(400).json({
         success: false,
         error: {
-          code: "INVALID_EMAIL",
-          message: "Email is required.",
+          code: "INVALID_USER_DATA",
+          message: result.error.issues.map((err) => err.message).join(", "),
         },
       });
-      return;
     }
 
-    // Validate username
-    if (typeof username !== "string" || !username.trim()) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: "INVALID_USERNAME",
-          message: "Username is required.",
-        },
-      });
-      return;
-    }
-
-    // Validate password
-    if (typeof password !== "string" || password.length < 8) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: "INVALID_PASSWORD",
-          message: "Password must contain at least 8 characters.",
-        },
-      });
-      return;
-    }
-
-    const normalizedEmail = email.trim().toLowerCase();
-    const normalizedUsername = username.trim();
-
+    const {
+      username: validatedUsername,
+      email: validatedEmail,
+      password: validatedPassword,
+    } = result.data;
     // Hash password before persistence
-    const hashedPassword = await argon2.hash(password);
+    const hashedPassword = await argon2.hash(validatedPassword);
+    const existingUser = await db.orm.public.User.where({ email: validatedEmail }).first();
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: "USER_ALREADY_EXISTS",
+          message: "The email is already in use.",
+        },
+      });
+        }
 
     // Create user using your existing Prisma 8 ORM interface
     const user = await db.orm.public.User.create({
-      email: normalizedEmail,
-      username: normalizedUsername,
-      password: hashedPassword,
+      email: validatedEmail,
+      username: validatedUsername,
+      password: hashedPassword
     });
 
     // Never return the password or its hash
@@ -207,19 +205,10 @@ router.patch("/:id", async (req, res) => {
 
     const { username, is_active } = req.body;
 
-    const updatedUser = await db.orm.public.User
+    const User = await db.orm.public.User
       .where({ id })
-      .update({
-        ...(typeof username === "string" && {
-          username: username.trim()
-        }),
-
-        ...(typeof is_active === "boolean" && {
-          is_active
-        })
-      });
-
-    if (!updatedUser) {
+      
+    if (!User) {
       res.status(404).json({
         success: false,
         error: {
@@ -230,10 +219,15 @@ router.patch("/:id", async (req, res) => {
 
       return;
     }
+    await db.orm.public.User.where({ id }).update({
+      username,
+      is_active
+    });
+
+  
 
     res.status(200).json({
       success: true,
-      data: updatedUser
     });
 
   } catch (error) {
@@ -269,11 +263,11 @@ router.delete("/:id", async (req, res) => {
       return;
     }
 
-    const deletedUser = await db.orm.public.User
+    const User = await db.orm.public.User
       .where({ id })
-      .delete();
+      
 
-    if (!deletedUser) {
+    if (!User) {
       res.status(404).json({
         success: false,
         error: {
@@ -284,6 +278,7 @@ router.delete("/:id", async (req, res) => {
 
       return;
     }
+    await db.orm.public.User.where({ id }).delete();
 
     res.status(204).json({
       success: true,

@@ -299,6 +299,21 @@
                   "model": "User",
                   "namespace": "public"
                 }
+              },
+              "comments": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "postId"
+                  ]
+                },
+                "to": {
+                  "model": "Comment",
+                  "namespace": "public"
+                }
               }
             },
             "storage": {

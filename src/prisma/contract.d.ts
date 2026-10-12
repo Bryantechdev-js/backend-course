@@ -408,7 +408,8 @@ export namespace Models {
     title: CodecTypes['pg/text@1']['output'];
     updatedAt: CodecTypes['pg/timestamptz-string@1']['output'];
     author: public_User;
-    readonly [RelationKeys]?: 'author';
+    comments: public_Comment[];
+    readonly [RelationKeys]?: 'author' | 'comments';
   };
   export type public_User = {
     createdAt: CodecTypes['pg/timestamptz-string@1']['output'];
@@ -947,6 +948,17 @@ type ContractBase = Omit<
                 readonly on: {
                   readonly localFields: readonly ['authorId'];
                   readonly targetFields: readonly ['id'];
+                };
+              };
+              readonly comments: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'Comment';
+                };
+                readonly cardinality: '1:N';
+                readonly on: {
+                  readonly localFields: readonly ['id'];
+                  readonly targetFields: readonly ['postId'];
                 };
               };
             };
