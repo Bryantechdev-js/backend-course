@@ -4,6 +4,7 @@ const router = Router();
 import { db } from "../../prisma/db.ts";
 import { userSchema } from "../../lib/zodconfig.ts";
 import { rateLimit } from "express-rate-limit";
+import { accessCookieOptions, createAccessToken, createRefreshToken, refreshCookieOptions } from "../../lib/helpers/authhelpers.ts";
 
 /**
  * GET /api/v1/users
@@ -15,6 +16,15 @@ router.get("/", async (req, res) => {
    const users = await db.orm.public.User
       .orderBy((user) => user.id.asc())
       .all();
+    if (!users || users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: "USERS_NOT_FOUND",
+          message: "No users found."
+        }
+      });
+        }
 
     res.status(200).json({
       success: true,
@@ -104,6 +114,17 @@ export const registerLimiter = rateLimit({
     message: "Too many registration attempts. Please try again later.",
   },
 });
+
+export const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 3,
+  standardHeaders: true,  // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  message: {
+    success: false,
+    message: "Too many login attempts. Please try again later.",
+  }
+});
 router.post("/",registerLimiter, async (req, res) => {
   try {
     const { email, username, password } = req.body ?? {};
@@ -177,6 +198,78 @@ router.post("/",registerLimiter, async (req, res) => {
       error: {
         code: "USER_CREATE_FAILED",
         message: "Unable to create user.",
+      },
+    });
+  }
+});
+
+
+router.post("/login", loginLimiter, async (req, res) => {
+  try {
+    const { email, password } = req.body ?? {};
+
+    if (
+      typeof email !== "string" ||
+      typeof password !== "string" ||
+      !email.trim() ||
+      !password
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_LOGIN_DATA",
+          message: "Email and password are required.",
+        },
+      });
+    }
+
+    const user = await db.orm.public.User
+      .where({ email: email.trim() })
+      .first();
+
+    if (!user || !(await argon2.verify(user.password, password))) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: "INVALID_CREDENTIALS",
+          message: "Email or password is incorrect.",
+        },
+      });
+    }
+
+
+    // Generate both tokens after successful authentication.
+    const accessToken = createAccessToken(user.id,user.email);
+    const refreshToken = createRefreshToken(user.id);
+
+    // Store both tokens in the browser as HttpOnly cookies.
+    res.cookie("accessToken", accessToken, accessCookieOptions);
+    res.cookie("refreshToken", refreshToken, refreshCookieOptions);
+  
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful.",
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          is_active: user.is_active,
+        },
+        accessTokenExpiresIn: 900,
+        refreshTokenExpiresIn: 604800,
+      },
+    });
+  } catch (error) {
+    console.error("POST /users/login error:", error);
+
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "LOGIN_FAILED",
+        message: "Unable to log in right now.",
+        raw_error: error instanceof Error ? error.message : String(error),
       },
     });
   }
